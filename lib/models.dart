@@ -1,13 +1,6 @@
-// ============================================================
-// models.dart
-// Data models for the Flutter Map Navigation Feature
-// ============================================================
 
 import 'package:latlong2/latlong.dart';
 
-// ─────────────────────────────────────────────────────────────
-// POI CATEGORY CONSTANTS
-// ─────────────────────────────────────────────────────────────
 class PoiCategory {
   static const String all      = 'all';
   static const String hospital = 'hospital';
@@ -22,26 +15,23 @@ class PoiCategory {
     hospital, police, fuel, bank, park, cafe,
   ];
 
-  /// ORS category_group_ids for each category
+  /// Correct ORS category_group_ids (OpenRouteService enforces max 5 items!)
   static List<int> groupIds(String category) {
     switch (category) {
-      case hospital: return [580];
-      case police:   return [600];
-      case fuel:     return [660];
-      case bank:     return [620];
-      case park:     return [640];
-      case cafe:     return [560];
-      default:       return allGroupIds; // 'all'
+      case hospital: return [200]; // Healthcare (hospital: 206)
+      case police:   return [360]; // Public places (police: 369)
+      case fuel:     return [580]; // Transport (fuel: 596)
+      case bank:     return [190]; // Financial (bank: 192)
+      case park:     return [260]; // Leisure (park: 280)
+      case cafe:     return [560]; // Sustenance (cafe: 564)
+      default:       return [200, 360, 580, 190, 560]; // Max 5 items allowed by ORS!
     }
   }
 
-  static const List<int> allGroupIds = [580, 600, 660, 620, 640, 560];
+  // Top 5 groups allowed by OpenRouteService
+  static const List<int> allGroupIds = [200, 360, 580, 190, 560];
 }
 
-// ─────────────────────────────────────────────────────────────
-// PLACE MODEL
-// Represents a single POI or search result
-// ─────────────────────────────────────────────────────────────
 class PlaceModel {
   final String  name;
   final LatLng  position;
@@ -70,21 +60,21 @@ class PlaceModel {
         (coords[0] as num).toDouble(),
       ),
       category: cat,
-      address:  props['street'] as String?,
+      address:  props['street'] as String? ?? props['housenumber'] as String?,
       osmId:    props['osm_id']?.toString(),
     );
   }
 
   static String _labelFromCategory(String cat) {
     const map = {
-      PoiCategory.hospital: 'Hospital',
+      PoiCategory.hospital: 'Hospital / Clinic',
       PoiCategory.police:   'Police Station',
       PoiCategory.fuel:     'Fuel Station',
-      PoiCategory.bank:     'Bank',
-      PoiCategory.park:     'Park',
-      PoiCategory.cafe:     'Café',
+      PoiCategory.bank:     'Bank / ATM',
+      PoiCategory.park:     'Park / Safe Haven',
+      PoiCategory.cafe:     'Café / Store',
     };
-    return map[cat] ?? 'Place';
+    return map[cat] ?? 'Safe Place';
   }
 
   static String _resolveCategoryFromProps(Map<String, dynamic> props) {
@@ -96,6 +86,7 @@ class PlaceModel {
         if (resolved != PoiCategory.unknown) return resolved;
       }
     }
+
     final groupIds = props['category_group_ids'];
     if (groupIds is List && groupIds.isNotEmpty) {
       return _categoryFromGroupId((groupIds.first as num).toInt());
@@ -104,32 +95,28 @@ class PlaceModel {
   }
 
   static String _categoryFromOrsId(int id) {
-    if (id >= 580 && id <= 582) return PoiCategory.hospital;
-    if (id >= 600 && id <= 603) return PoiCategory.police;
-    if (id == 660)               return PoiCategory.fuel;
-    if (id >= 620 && id <= 625) return PoiCategory.bank;
-    if (id >= 640 && id <= 650) return PoiCategory.park;
-    if (id >= 560 && id <= 570) return PoiCategory.cafe;
+    if (id >= 201 && id <= 213) return PoiCategory.hospital;
+    if (id >= 361 && id <= 374) return PoiCategory.police;
+    if (id == 596)              return PoiCategory.fuel;
+    if (id >= 191 && id <= 193) return PoiCategory.bank;
+    if (id >= 268 && id <= 310) return PoiCategory.park;
+    if (id >= 561 && id <= 570) return PoiCategory.cafe;
     return PoiCategory.unknown;
   }
 
   static String _categoryFromGroupId(int groupId) {
     const map = {
-      580: PoiCategory.hospital,
-      600: PoiCategory.police,
-      660: PoiCategory.fuel,
-      620: PoiCategory.bank,
-      640: PoiCategory.park,
+      200: PoiCategory.hospital,
+      360: PoiCategory.police,
+      580: PoiCategory.fuel,
+      190: PoiCategory.bank,
+      260: PoiCategory.park,
       560: PoiCategory.cafe,
     };
     return map[groupId] ?? PoiCategory.unknown;
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// ROUTE STATS MODEL
-// POI counts along a route corridor
-// ─────────────────────────────────────────────────────────────
 class RouteStats {
   final int hospitals;
   final int police;
@@ -148,17 +135,8 @@ class RouteStats {
   });
 
   int get total => hospitals + police + fuel + banks + parks + cafes;
-
-  @override
-  String toString() =>
-      'RouteStats(hospitals:$hospitals police:$police fuel:$fuel '
-          'banks:$banks parks:$parks cafes:$cafes)';
 }
 
-// ─────────────────────────────────────────────────────────────
-// ROUTE MODEL
-// A single navigation route with geometry + analysis data
-// ─────────────────────────────────────────────────────────────
 class RouteModel {
   final int            index;
   final List<LatLng>   points;
@@ -198,10 +176,6 @@ class RouteModel {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// GEOCODE RESULT
-// A single result from a forward geocoding search
-// ─────────────────────────────────────────────────────────────
 class GeocodeResult {
   final String  label;
   final LatLng  position;
@@ -217,7 +191,6 @@ class GeocodeResult {
     final props    = json['properties'] as Map<String, dynamic>? ?? {};
     final geometry = json['geometry']   as Map<String, dynamic>? ?? {};
     final coords   = geometry['coordinates'] as List<dynamic>? ?? [0.0, 0.0];
-
     return GeocodeResult(
       label:    props['label'] as String? ?? props['name'] as String? ?? 'Unknown',
       position: LatLng(
