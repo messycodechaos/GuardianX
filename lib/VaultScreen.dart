@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:async';
 import 'package:path_provider/path_provider.dart';
 import 'record_service.dart';
+import 'app_theme.dart';
 
 class VaultScreen extends StatefulWidget {
   const VaultScreen({super.key});
@@ -33,6 +34,7 @@ class _VaultScreenState extends State<VaultScreen> {
       allFiles.addAll(videoDir.listSync().where((f) => f is File && !f.path.endsWith('.tmp')));
     }
 
+    // Sort by date (Newest first)
     allFiles.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
     return allFiles;
   }
@@ -43,12 +45,13 @@ class _VaultScreenState extends State<VaultScreen> {
       _secondsLeft = 5;
     });
 
-    bool started = await RecordService().startLocalRecord();
-    if (!started) {
+    try {
+      await RecordService().startLocalRecord();
+    } catch (e) {
       if (mounted) {
         setState(() => _isTestingRecord = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Failed to start test recording. Check microphone permission.")),
+          SnackBar(content: Text("Recording error: $e")),
         );
       }
       return;
@@ -61,12 +64,14 @@ class _VaultScreenState extends State<VaultScreen> {
       }
       if (_secondsLeft <= 1) {
         timer.cancel();
-        String? path = await RecordService().stopLocalRecord();
+        try {
+          await RecordService().stopLocalRecord();
+        } catch (_) {}
         setState(() => _isTestingRecord = false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("✅ Test Evidence Saved: ${path?.split('/').last ?? 'Evidence created'}"),
+            const SnackBar(
+              content: Text("✅ Test Evidence Saved to Vault!"),
               backgroundColor: Colors.green,
             ),
           );
@@ -86,14 +91,12 @@ class _VaultScreenState extends State<VaultScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text("Evidence Vault", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        title: const Text("Evidence Vault"),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
+            icon: const Icon(Icons.refresh, color: AppTheme.textPrimary),
             onPressed: () => setState(() {}),
           )
         ],
@@ -102,12 +105,12 @@ class _VaultScreenState extends State<VaultScreen> {
         children: [
           // Quick Test Evidence Banner
           Container(
-            margin: const EdgeInsets.all(16),
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF1E293B),
+              color: AppTheme.card,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
+              border: Border.all(color: AppTheme.cardBorder),
             ),
             child: Row(
               children: [
@@ -117,7 +120,7 @@ class _VaultScreenState extends State<VaultScreen> {
                     children: [
                       const Text(
                         "Test Evidence Vault",
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                        style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 15),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -125,7 +128,7 @@ class _VaultScreenState extends State<VaultScreen> {
                             ? "Recording test audio evidence... ($_secondsLeft s)"
                             : "Record a 5-second audio clip to verify file storage in the vault.",
                         style: TextStyle(
-                          color: _isTestingRecord ? Colors.redAccent : Colors.grey,
+                          color: _isTestingRecord ? AppTheme.crimson : AppTheme.textSecondary,
                           fontSize: 12,
                         ),
                       ),
@@ -135,7 +138,7 @@ class _VaultScreenState extends State<VaultScreen> {
                 const SizedBox(width: 12),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _isTestingRecord ? Colors.redAccent : Colors.blueAccent,
+                    backgroundColor: _isTestingRecord ? AppTheme.crimson : AppTheme.azure,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: _isTestingRecord ? null : _runQuickTestRecord,
@@ -146,13 +149,13 @@ class _VaultScreenState extends State<VaultScreen> {
             ),
           ),
 
-          // Evidence File List
+          // File List
           Expanded(
             child: FutureBuilder<List<FileSystemEntity>>(
               future: _getAllRecords(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Colors.redAccent));
+                  return const Center(child: CircularProgressIndicator(color: AppTheme.crimson));
                 }
 
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
@@ -160,16 +163,16 @@ class _VaultScreenState extends State<VaultScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.shield_outlined, size: 64, color: Colors.grey.withOpacity(0.4)),
+                        Icon(Icons.shield_outlined, size: 64, color: AppTheme.textMuted.withOpacity(0.4)),
                         const SizedBox(height: 16),
-                        const Text("No Evidence Files Yet", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                        const Text("No Evidence Files Yet", style: TextStyle(color: AppTheme.textPrimary, fontSize: 17, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
                         const Padding(
                           padding: EdgeInsets.symmetric(horizontal: 40),
                           child: Text(
                             "Recordings from SOS Level 3 or the Test button above will be stored securely here.",
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.grey, fontSize: 13),
+                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                           ),
                         ),
                       ],
@@ -189,33 +192,49 @@ class _VaultScreenState extends State<VaultScreen> {
                     final modifiedStr = stat.modified.toString().substring(0, 19);
 
                     return Card(
-                      color: const Color(0xFF1E293B),
+                      color: AppTheme.card,
                       margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: const BorderSide(color: AppTheme.cardBorder),
+                      ),
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: isVideo ? Colors.blue.withOpacity(0.2) : Colors.orange.withOpacity(0.2),
+                          backgroundColor: isVideo ? AppTheme.azure.withOpacity(0.15) : AppTheme.amber.withOpacity(0.15),
                           child: Icon(
                             isVideo ? Icons.videocam : Icons.mic,
-                            color: isVideo ? Colors.blueAccent : Colors.orangeAccent,
+                            color: isVideo ? AppTheme.azure : AppTheme.amber,
                           ),
                         ),
-                        title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
-                        subtitle: Text("$sizeKb KB  •  $modifiedStr", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                        title: Text(name, style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 14)),
+                        subtitle: Text("$sizeKb KB  •  $modifiedStr", style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
                         trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                          icon: const Icon(Icons.delete_outline, color: AppTheme.textMuted),
                           onPressed: () {
                             try {
                               file.deleteSync();
                               setState(() {});
-                            } catch (_) {}
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text("File deleted")),
+                              );
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("Delete error: $e")),
+                              );
+                            }
                           },
                         ),
                         onTap: () {
                           showDialog(
                             context: context,
                             builder: (ctx) => AlertDialog(
-                              title: const Text("Evidence Details"),
+                              title: Row(
+                                children: [
+                                  Icon(isVideo ? Icons.videocam : Icons.mic, color: Colors.redAccent),
+                                  const SizedBox(width: 8),
+                                  const Text("Evidence Details"),
+                                ],
+                              ),
                               content: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,9 +242,10 @@ class _VaultScreenState extends State<VaultScreen> {
                                   Text("Filename: $name", style: const TextStyle(fontWeight: FontWeight.bold)),
                                   const SizedBox(height: 8),
                                   Text("Size: $sizeKb KB"),
-                                  Text("Date: $modifiedStr"),
+                                  const SizedBox(height: 4),
+                                  Text("Recorded: $modifiedStr"),
                                   const SizedBox(height: 8),
-                                  const Text("Path:", style: TextStyle(fontWeight: FontWeight.bold)),
+                                  const Text("Storage Path:", style: TextStyle(fontWeight: FontWeight.bold)),
                                   Text(file.path, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                 ],
                               ),
