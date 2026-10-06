@@ -90,7 +90,9 @@ class _NavigationScreenState extends State<NavigationScreen> {
   LatLng?             _destination;
   String              _destinationLabel = '';
   List<RouteModel>    _routes           = [];
+  List<PlaceModel> _allPois = [];
   List<PlaceModel>    _pois             = [];
+  List<List<PlaceModel>>  _routePois = [];
   List<GeocodeResult> _suggestions      = [];
   String              _activeCategory   = PoiCategory.all;
 
@@ -265,42 +267,43 @@ class _NavigationScreenState extends State<NavigationScreen> {
   // Called by _onNavigatePressed. Guards against duplicate calls.
   Future<void> _fetchRoutes() async {
     if (_currentLocation == null || _destination == null) return;
-    if (_loadingRoutes) return; // prevent double-tap
-
+    if (_loadingRoutes) return;
     setState(() {
       _loadingRoutes = true;
       _errorMessage  = null;
       _routes        = [];
+      _routePois     = [];
     });
 
     try {
-      // ── 1. Fetch routes (with auto-fallback in MapService) ──
-      final routes = await _mapService.fetchRoutes(
-          _currentLocation!, _destination!);
-
+      // 1. Fetch all alternative routes
+      final routes = await _mapService.fetchRoutes(_currentLocation!, _destination!);
       if (routes.isEmpty) {
         throw Exception('No routes found between these points.');
       }
 
-      // ── 2. Fetch POI stats for ALL routes concurrently ──────
-      final statsResults = await Future.wait(
-        routes.map((r) => _mapService.fetchPoiStatsForRoute(r.points)),
+      // 2. Fetch REAL POIs for EVERY route concurrently
+      final routePoisList = await Future.wait(
+        routes.map((r) => _mapService.fetchRealPoisForRoute(r.points)),
       );
 
-      // ── 3. Merge stats into route models ────────────────────
+      // 3. Attach genuine stats to each route
       final enriched = List.generate(
         routes.length,
-            (i) => routes[i].copyWith(stats: statsResults[i]),
+            (i) => routes[i].copyWith(
+          stats: _mapService.calculateRealRouteStats(routePoisList[i]),
+        ),
       );
 
       if (!mounted) return;
       setState(() {
         _routes        = enriched;
+        _routePois     = routePoisList;
         _loadingRoutes = false;
       });
 
-      // Fit map to show the selected route
-      _fitRoute(_routes.first);
+      // Select Route 1 by default
+      _selectRoute(0);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -316,7 +319,20 @@ class _NavigationScreenState extends State<NavigationScreen> {
       for (int i = 0; i < _routes.length; i++) {
         _routes[i] = _routes[i].copyWith(isSelected: i == idx);
       }
+
+      // Load POIs for the chosen route (Route 1, 2, or 3)
+      if (idx < _routePois.length) {
+        _allPois = _routePois[idx];
+      }
+
+      // Filter by active sidebar category
+      if (_activeCategory == PoiCategory.all) {
+        _pois = List.from(_allPois);
+      } else {
+        _pois = _allPois.where((p) => p.category == _activeCategory).toList();
+      }
     });
+
     _fitRoute(_routes[idx]);
   }
 
@@ -343,7 +359,23 @@ class _NavigationScreenState extends State<NavigationScreen> {
     setState(() => _loadingPois = true);
     try {
       final pois = await _mapService.fetchPoisAround(center, category: cat);
-      if (mounted) setState(() => _pois = pois);
+      if (mounted) {
+        setState(() {
+          // Merge into _allPois avoiding duplicates by coordinates
+          final existingCoords = _allPois.map((p) => '${p.position.latitude},${p.position.longitude}').toSet();
+          for (final p in pois) {
+            if (!existingCoords.contains('${p.position.latitude},${p.position.longitude}')) {
+              _allPois.add(p);
+            }
+          }
+          // Update visible POIs
+          if (_activeCategory == PoiCategory.all) {
+            _pois = List.from(_allPois);
+          } else {
+            _pois = _allPois.where((p) => p.category == _activeCategory).toList();
+          }
+        });
+      }
     } catch (_) {}
     finally {
       if (mounted) setState(() => _loadingPois = false);
@@ -351,11 +383,21 @@ class _NavigationScreenState extends State<NavigationScreen> {
   }
 
   void _onCategoryFilter(String cat) {
-    final next = (cat == _activeCategory) ? PoiCategory.all : cat;
-    setState(() { _activeCategory = next; _pois = []; });
-    if (_currentLocation != null) _loadPois(_currentLocation!, category: next);
-  }
+    final next = (_activeCategory == cat) ? PoiCategory.all : cat;
+    setState(() {
+      _activeCategory = next;
+      if (next == PoiCategory.all) {
+        _pois = List.from(_allPois);
+      } else {
+        _pois = _allPois.where((p) => p.category == next).toList();
+      }
+    });
 
+    // If none are loaded yet in current area, fetch real ones from OSM
+    if (_pois.isEmpty && _currentLocation != null) {
+      _loadPois(_currentLocation!, category: next);
+    }
+  }
   // ── HELPERS ──────────────────────────────────────────────
   void _centerOnUser() {
     if (_currentLocation != null) _mapController.move(_currentLocation!, 15.0);
@@ -522,10 +564,14 @@ class _NavigationScreenState extends State<NavigationScreen> {
     return _pois.map((poi) {
       final meta = _categoryMeta[poi.category];
       if (meta == null) return null;
+
+      final isSelected = (_activeCategory == poi.category);
+      final double markerSize = isSelected ? 44.0 : 36.0;
+
       return Marker(
         point:  poi.position,
-        width:  36,
-        height: 36,
+        width:  markerSize,
+        height: markerSize,
         child:  GestureDetector(
           onTap: () => _onPoiTap(poi),
           child: Tooltip(
@@ -534,16 +580,19 @@ class _NavigationScreenState extends State<NavigationScreen> {
               decoration: BoxDecoration(
                 color:  meta.color,
                 shape:  BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
+                border: Border.all(
+                  color: isSelected ? Colors.amberAccent : Colors.white,
+                  width: isSelected ? 3.0 : 2.0,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color:      meta.color.withOpacity(0.4),
-                    blurRadius: 4,
-                    spreadRadius: 1,
+                    color: isSelected ? meta.color.withOpacity(0.8) : meta.color.withOpacity(0.4),
+                    blurRadius: isSelected ? 10 : 4,
+                    spreadRadius: isSelected ? 2 : 1,
                   ),
                 ],
               ),
-              child: Icon(meta.icon, color: Colors.white, size: 16),
+              child: Icon(meta.icon, color: Colors.white, size: isSelected ? 22 : 16),
             ),
           ),
         ),

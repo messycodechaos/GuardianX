@@ -46,6 +46,25 @@ class PlaceModel {
     this.address,
     this.osmId,
   });
+  factory PlaceModel.fromNominatim(Map<String, dynamic> json, String category) {
+    final rawName = (json['name'] as String?)?.trim();
+    final displayName = (json['display_name'] as String?)?.trim() ?? '';
+    final name = (rawName != null && rawName.isNotEmpty)
+        ? rawName
+        : (displayName.isNotEmpty ? displayName.split(',').first.trim() : _labelFromCategory(category));
+
+    return PlaceModel(
+      name:     name,
+      position: LatLng(
+        double.tryParse(json['lat']?.toString() ?? '') ?? 0.0,
+        double.tryParse(json['lon']?.toString() ?? '') ?? 0.0,
+      ),
+      category: category,
+      address:  displayName.isNotEmpty ? displayName : null,
+      osmId:    json['osm_id']?.toString(),
+    );
+  }
+
 
   factory PlaceModel.fromOrsFeature(Map<String, dynamic> json) {
     final props    = json['properties'] as Map<String, dynamic>? ?? {};
@@ -87,10 +106,18 @@ class PlaceModel {
       }
     }
 
+    // Check category_group_ids as Map or List:
     final groupIds = props['category_group_ids'];
-    if (groupIds is List && groupIds.isNotEmpty) {
+    if (groupIds is Map) {
+      for (final key in groupIds.keys) {
+        final id       = int.tryParse(key.toString()) ?? 0;
+        final resolved = _categoryFromGroupId(id);
+        if (resolved != PoiCategory.unknown) return resolved;
+      }
+    } else if (groupIds is List && groupIds.isNotEmpty) {
       return _categoryFromGroupId((groupIds.first as num).toInt());
     }
+
     return PoiCategory.unknown;
   }
 
