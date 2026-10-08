@@ -546,7 +546,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
               alignment: const Alignment(0, -1),
               child:     const Icon(
                 Icons.location_pin,
-                color: Color(0xFFEA4335),
+                color: Color(0xFFF12E1F),
                 size:  44,
               ),
             ),

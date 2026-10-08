@@ -1,5 +1,5 @@
-name: aa3333
-description: "A new Flutter project."
+name: guardian_x
+description: "GuardianX 2.0 - Real-time AI Safety Sentinel"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 2.0.0+1
 
 environment:
   sdk: ^3.9.2
@@ -32,23 +32,30 @@ dependencies:
     sdk: flutter
 #  background_sms: ^0.0.1
   email_otp: ^2.0.1
+  tflite_flutter: ^0.10.4
+  camera: ^0.11.0+2
+  image: ^4.3.0
   share_plus: ^10.1.0
-  geolocator: ^10.1.0
-  url_launcher: ^6.3.0
+  geolocator: ^13.0.1
+  url_launcher: ^6.3.1
+  audioplayers: ^6.1.0
   socket_io_client: ^2.0.3
-  shared_preferences: ^2.2.2
+  shared_preferences: ^2.3.3
   permission_handler: ^11.4.0
+  telephony: ^0.2.0
   flutter_foreground_task: ^6.1.1
   flutter_map: ^6.1.0
   latlong2: ^0.9.1
   wakelock_plus: ^1.1.4
   record: ^5.2.0
-  path_provider: ^2.1.1
+  path_provider: ^2.1.5
   intl: ^0.19.0
   http: ^1.1.0
   flutter_webrtc: ^0.12.1
   flutter_polyline_points: ^2.0.0
   flutter_tts: ^4.0.2
+  crypto: ^3.0.6
+  cupertino_icons: ^1.0.8
   vibration: ^1.8.4
 dev_dependencies:
   flutter_test:
@@ -103,3 +110,9 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+assets:
+  - assets/models/yamnet.tflite
+  - assets/models/yamnet_labels.txt
+  - assets/models/yolov8n_threat.tflite
+  - assets/models/coco_labels.txt
+  - assets/audio/emergency_siren.mp3

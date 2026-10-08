@@ -13,6 +13,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'navigation_screen.dart';
 import 'otp_screen.dart';
 
+// Integrated AI Threat Sentinel Screen
+import 'guardian_sensing_screen.dart';
+
 // Service & Screen Imports
 import 'sos_model.dart';
 import 'camera_service.dart';
@@ -51,6 +54,13 @@ class RemoteManager {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Lock to portrait orientation for stable camera & sensor monitoring
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
   if (!kIsWeb) {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
@@ -64,6 +74,7 @@ void main() async {
       foregroundTaskOptions: const ForegroundTaskOptions(interval: 5000, allowWakeLock: true),
     );
   }
+
   await RemoteManager().init();
   runApp(const GuardianXApp());
 }
@@ -72,6 +83,7 @@ class GuardianXApp extends StatelessWidget {
   const GuardianXApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
+    title: 'GuardianX 2.0',
     debugShowCheckedModeBanner: false,
     theme: AppTheme.darkTheme,
     home: const SplashScreen(),
@@ -394,20 +406,36 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override void initState() {
     super.initState();
-    if (!kIsWeb) [Permission.camera, Permission.microphone, Permission.storage, Permission.location, Permission.sms].request();
+    if (!kIsWeb) {
+      [
+        Permission.camera,
+        Permission.microphone,
+        Permission.storage,
+        Permission.location,
+        Permission.sms,
+        Permission.phone
+      ].request();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Collect active emergency phone numbers for the AI Sentinel
+    final List<String> contactPhoneNumbers = myContacts.map((c) => c.number).toList();
+
     final List<Widget> screens = [
       HomeScreen(levels: myLevels, contacts: myContacts),
       const NavigationScreen(),
       GuardianScreen(contacts: myContacts, onUpdate: (l) => setState(() => myContacts = l)),
       ConfigScreen(levels: myLevels, onUpdate: (l) => setState(() => myLevels = l)),
-      const AIScreen(),
+
+      // INTEGRATED REAL-TIME AI SENTINEL (VOICE STRAIN & WEAPON VISION)
+      GuardianSensingScreen(emergencyContacts: contactPhoneNumbers.isNotEmpty ? contactPhoneNumbers : ['911']),
+
       const VaultScreen(),
       ViewerEntryTab(socket: RemoteManager().socket!)
     ];
+
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: screens),
       bottomNavigationBar: BottomNavigationBar(

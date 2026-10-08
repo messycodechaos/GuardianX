@@ -31,7 +31,7 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
-        android:label="GuardianX"
+        android:label="GuardianX 2.0"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
