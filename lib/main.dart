@@ -22,7 +22,7 @@ import 'record_service.dart';
 import 'video_record_service.dart';
 import 'location_sms_service.dart';
 import 'ai_screen.dart';
-import 'VaultScreen.dart';
+import 'vault_screen.dart';
 import 'app_theme.dart';
 import 'package:email_otp/email_otp.dart';
 

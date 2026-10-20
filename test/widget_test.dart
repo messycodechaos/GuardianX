@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aa3333/main.dart';
+import 'package:guardian_x/main.dart';
 
 void main() {
   testWidgets('GuardianXApp smoke test', (WidgetTester tester) async {

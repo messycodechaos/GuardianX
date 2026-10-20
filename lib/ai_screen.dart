@@ -1,302 +1,210 @@
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
 import 'ai_controller.dart';
-import 'fake_call_screen.dart';
-import 'app_theme.dart';
+import 'services/emergency_manager.dart';
 
 class AIScreen extends StatefulWidget {
-  const AIScreen({super.key});
+  const AIScreen({Key? key}) : super(key: key);
+
   @override
   State<AIScreen> createState() => _AIScreenState();
 }
 
 class _AIScreenState extends State<AIScreen> {
-  final ai = AIController();
+  final AIController _controller = AIController();
+  ThreatIncident? _activeIncident;
+  int _secondsRemaining = 10;
+  bool _showingAlertModal = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.startSafetyEye();
+
+    // Listen for threat triggers from EmergencyManager
+    EmergencyManager.instance.addTickListener((incident, seconds) {
+      if (mounted) {
+        setState(() {
+          _activeIncident = incident;
+          _secondsRemaining = seconds;
+          _showingAlertModal = true;
+        });
+      }
+    });
+
+    EmergencyManager.instance.addDismissListener(() {
+      if (mounted) {
+        setState(() {
+          _showingAlertModal = false;
+          _activeIncident = null;
+        });
+      }
+    });
+
+    EmergencyManager.instance.addEscalateListener((msg) {
+      if (mounted) {
+        setState(() => _showingAlertModal = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.redAccent,
+            content: Text(msg, maxLines: 3),
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: const Text("AI Defense Layer"),
-        centerTitle: true,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      backgroundColor: Colors.black,
+      body: Stack(
         children: [
-          Row(
-            children: [
-              Container(
-                width: 4,
-                height: 16,
-                decoration: BoxDecoration(
-                  color: AppTheme.crimson,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+          // 1. Camera Viewfinder
+          if (_controller.isInitialized && _controller.cameraController != null)
+            SizedBox.expand(
+              child: CameraPreview(_controller.cameraController!),
+            )
+          else
+            const Center(
+              child: CircularProgressIndicator(color: Colors.blueAccent),
+            ),
+
+          // 2. HUD Top Bar
+          Positioned(
+            top: 48,
+            left: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.85),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
               ),
-              const SizedBox(width: 8),
-              const Text(
-                "AUTONOMOUS THREAT SENSING",
-                style: TextStyle(
-                  color: AppTheme.crimson,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // 1. ACOUSTIC THREAT DETECTION
-          _aiSwitch(
-            "Safety Ear (Voice Monitor)",
-            "Automatically triggers SOS if it hears screams or glass breaking.",
-            ai.isVoiceMonitorActive,
-                (v) async {
-              if (v) {
-                bool success = await ai.startAcousticMonitor((reason, db) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Row(
-                        children: [
-                          const Icon(Icons.warning, color: Colors.white),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text("🚨 $reason (${db.toStringAsFixed(1)} dB)")),
-                        ],
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(
+                          color: Colors.greenAccent,
+                          shape: BoxShape.circle,
+                        ),
                       ),
-                      backgroundColor: Colors.redAccent,
-                      duration: const Duration(seconds: 4),
-                    ),
-                  );
-                });
-
-                setState(() => ai.isVoiceMonitorActive = success);
-
-                if (!mounted) return;
-                if (success) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text("🎧 Safety Ear listening! (Clap loudly or tap Test Trigger to verify)"),
-                      backgroundColor: Colors.green,
-                      duration: const Duration(seconds: 3),
-                      action: SnackBarAction(
-                        label: "TEST NOW",
-                        textColor: Colors.white,
-                        onPressed: () {
-                          ai.testTriggerAcousticAlert((reason, db) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text("🚨 $reason (${db.toStringAsFixed(1)} dB)"),
-                                backgroundColor: Colors.redAccent,
-                              ),
-                            );
-                          });
-                        },
+                      const SizedBox(width: 8),
+                      const Text(
+                        'SAFETY EYE AI',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                       ),
-                    ),
-                  );
-                } else {
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text("Microphone Permission Required"),
-                      content: const Text("Safety Ear needs microphone access to detect high-decibel screams or glass shattering. Please grant microphone permission in Settings."),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK")),
-                      ],
-                    ),
-                  );
-                }
-              } else {
-                await ai.stopAcousticMonitor();
-                setState(() => ai.isVoiceMonitorActive = false);
-              }
-            },
-          ),
-
-          // 2. VISUAL GUARD
-          _aiSwitch(
-            "Safety Eye (Visual Guard)",
-            "AI analyzes camera frames for weapons or suspicious followers.",
-            ai.isVisualGuardActive,
-                (v) async {
-              if (v) {
-                bool success = await ai.startVisualGuard();
-                setState(() => ai.isVisualGuardActive = success);
-                if (!mounted) return;
-                if (success) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text("👁️ Safety Eye Armed: ${ai.visualGuardStatus}"),
-                      backgroundColor: Colors.blueAccent,
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
-                } else {
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text("Camera Permission Required"),
-                      content: const Text("Visual Guard requires camera access to scan for suspicious followers or threats. Please grant camera permission."),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK")),
-                      ],
-                    ),
-                  );
-                }
-              } else {
-                ai.stopVisualGuard();
-                setState(() => ai.isVisualGuardActive = false);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Safety Eye disarmed"), duration: Duration(seconds: 2)),
-                );
-              }
-            },
-          ),
-
-          // 3. SMART RADAR
-          _aiSwitch(
-            "Smart Safety Radar",
-            "Notifies you if you enter high-risk areas based on historical data.",
-            ai.isSmartRadarActive,
-                (v) async {
-              if (v) {
-                setState(() => ai.isSmartRadarActive = true);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("📡 Querying GPS location and risk zones..."), duration: Duration(seconds: 1)),
-                );
-                final res = await ai.getLiveSafetyScore();
-                if (!mounted) return;
-                final double score = res['score'] ?? 85.0;
-                final String status = res['status'] ?? 'Safe';
-
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: Row(
-                      children: [
-                        Icon(Icons.radar, color: score < 50 ? Colors.orange : Colors.green),
-                        const SizedBox(width: 8),
-                        const Text("Radar Diagnostics"),
-                      ],
-                    ),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Safety Score: ${score.toStringAsFixed(0)} / 100", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                        const SizedBox(height: 8),
-                        Text("Condition: $status"),
-                        const SizedBox(height: 4),
-                        if (res['lat'] != 0.0)
-                          Text("GPS: ${res['lat'].toStringAsFixed(4)}, ${res['lng'].toStringAsFixed(4)}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      ],
-                    ),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Acknowledge")),
                     ],
                   ),
-                );
-              } else {
-                setState(() => ai.isSmartRadarActive = false);
-              }
-            },
-          ),
-
-          const SizedBox(height: 24),
-          const Divider(color: AppTheme.cardBorder),
-          const SizedBox(height: 24),
-
-          // 4. GUARDIAN PHONE CALL
-          Row(
-            children: [
-              Container(
-                width: 4,
-                height: 16,
-                decoration: BoxDecoration(
-                  color: AppTheme.azure,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+                  Text(
+                    _controller.statusMessage,
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              const Text(
-                "DE-ESCALATION & DETERRENCE",
-                style: TextStyle(
-                  color: AppTheme.azure,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Card(
-            color: AppTheme.card,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: const BorderSide(color: AppTheme.cardBorder),
-            ),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              leading: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppTheme.azure.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.phone_in_talk, color: AppTheme.azure),
-              ),
-              title: const Text(
-                "Trigger Fake Guardian Call",
-                style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 15),
-              ),
-              subtitle: const Text(
-                "Starts a loud tactical AI voice dialogue to project remote security presence.",
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-              ),
-              trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.textMuted),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const FakeCallScreen())),
             ),
           ),
+
+          // 3. Auto-Escalation Check-In Modal
+          if (_showingAlertModal && _activeIncident != null)
+            Positioned(
+              bottom: 40,
+              left: 20,
+              right: 20,
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.redAccent, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.redAccent.withOpacity(0.3),
+                      blurRadius: 20,
+                      spreadRadius: 4,
+                    )
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 28),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _activeIncident!.label,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${_secondsRemaining}s',
+                            style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Are you safe? If you do not respond, GuardianX will automatically dispatch an emergency SOS alert with your live location.',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: () => EmergencyManager.instance.dismissAsSafe(),
+                            child: const Text('I AM SAFE', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.redAccent,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: () {
+                              // Immediate trigger
+                              EmergencyManager.instance.onThreatDetected(_activeIncident!);
+                            },
+                            child: const Text('CALL HELP', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
-      ),
-    );
-  }
-
-  Widget _aiSwitch(String t, String s, bool val, Function(bool) onChanged) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(
-        color: AppTheme.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: val ? AppTheme.crimson.withOpacity(0.4) : AppTheme.cardBorder,
-          width: 1.2,
-        ),
-      ),
-      child: SwitchListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        title: Text(
-          t,
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 15,
-            color: AppTheme.textPrimary,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            s,
-            style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary, height: 1.3),
-          ),
-        ),
-        value: val,
-        onChanged: onChanged,
-        activeColor: AppTheme.crimson,
-        activeTrackColor: AppTheme.crimson.withOpacity(0.3),
       ),
     );
   }
